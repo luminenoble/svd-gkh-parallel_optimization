@@ -20,40 +20,20 @@
 #include <cmath>
 #include <stdexcept>
 #include <vector>
-#include <arm_neon.h>
 
-static inline double dot_product_simd(const double *lhs, const double *rhs, int len)
+static inline double dot_product_avx2(const double *lhs, const double *rhs, int len)
 {
-    float64x2_t acc = vdupq_n_f64(0.0);
-    int i = 0;
-    for (; i + 1 < len; i += 2)
-    {
-        const float64x2_t a = vld1q_f64(lhs + i);
-        const float64x2_t b = vld1q_f64(rhs + i);
-        acc = vaddq_f64(acc, vmulq_f64(a, b));
-    }
-
-    double tmp[2];
-    vst1q_f64(tmp, acc);
-    double sum = tmp[0] + tmp[1];
-    for (; i < len; ++i)
+    double sum = 0.0;
+    for (int i = 0; i < len; ++i)
     {
         sum += lhs[i] * rhs[i];
     }
     return sum;
 }
 
-static inline void subtract_scaled_vector_simd(double *dst, const double *src, double scale, int len)
+static inline void subtract_scaled_vector_avx2(double *dst, const double *src, double scale, int len)
 {
-    const float64x2_t vscale = vdupq_n_f64(scale);
-    int i = 0;
-    for (; i + 1 < len; i += 2)
-    {
-        const float64x2_t a = vld1q_f64(dst + i);
-        const float64x2_t b = vld1q_f64(src + i);
-        vst1q_f64(dst + i, vsubq_f64(a, vmulq_f64(vscale, b)));
-    }
-    for (; i < len; ++i)
+    for (int i = 0; i < len; ++i)
     {
         dst[i] -= scale * src[i];
     }
@@ -91,7 +71,7 @@ Matrix to_bidiagonal(const Matrix &A, Matrix &U, Matrix &V)
     for (int k = 0; k < n; ++k)
     {
         // ================================================================
-        // === 步骤 1: 从左侧作用 Householder 变换，消去第 k 列中对角线以下的元素
+        // 步骤 1: 从左侧作用 Householder 变换，消去第 k 列中对角线以下的元素
         // ================================================================
 
         // 提取第 k 列从第 k 行往下的子向量
@@ -127,35 +107,24 @@ Matrix to_bidiagonal(const Matrix &A, Matrix &U, Matrix &V)
                 // 手册里的 Householder 矩阵定义为 H = I - beta * v * v^T，其中 beta = 2 / (v^T v)
                 // 从左侧作用 H：B_new = H * B_old = B_old - beta * v * (v^T * B_old)
                 std::vector<double> w(n - k, 0.0);
-                std::vector<double> column(m - k);
                 for (int j = 0; j < n - k; ++j)
-                {
                     for (int i = 0; i < m - k; ++i)
-                    {
-                        column[i] = B.at(k + i, k + j);
-                    }
-                    w[j] = dot_product_simd(v.data(), column.data(), m - k);
-                }
+                        w[j] += v[i] * B.at(k + i, k + j);
 
                 for (int i = 0; i < m - k; ++i)
-                {
-                    double *row_ptr = &B.at(k + i, k);
-                    subtract_scaled_vector_simd(row_ptr, w.data(), beta * v[i], n - k);
-                }
+                    for (int j = 0; j < n - k; ++j)
+                        B.at(k + i, k + j) -= beta * v[i] * w[j];
 
                 // 累积 U：U_new = U_old * H_k
                 // U[:, k:m] -= beta * (U[:, k:m] * v) * v^T
                 std::vector<double> wU(m, 0.0);
                 for (int i = 0; i < m; ++i)
-                {
-                    wU[i] = dot_product_simd(&U.at(i, k), v.data(), m - k);
-                }
+                    for (int j = 0; j < m - k; ++j)
+                        wU[i] += U.at(i, k + j) * v[j];
 
                 for (int i = 0; i < m; ++i)
-                {
-                    double *row_ptr = &U.at(i, k);
-                    subtract_scaled_vector_simd(row_ptr, v.data(), beta * wU[i], m - k);
-                }
+                    for (int j = 0; j < m - k; ++j)
+                        U.at(i, k + j) -= beta * wU[i] * v[j];
             }
         }
 
@@ -167,8 +136,8 @@ Matrix to_bidiagonal(const Matrix &A, Matrix &U, Matrix &V)
         }
 
         // ================================================================
-        // ===  步骤 2: 从右侧作用 Householder 变换，消去第 k 行中 (k,k+2) 及右边的元素
-        // ===        （只在 k < n-2 时需要）
+        // 步骤 2: 从右侧作用 Householder 变换，消去第 k 行中 (k,k+2) 及右边的元素
+        //        （只在 k < n-2 时需要）
         // ================================================================
 
         if (k < n - 2)
@@ -204,27 +173,21 @@ Matrix to_bidiagonal(const Matrix &A, Matrix &U, Matrix &V)
                     // B_new = B_old * V_k = B_old - beta * (B_old * v) * v^T
                     std::vector<double> w(m - k, 0.0);
                     for (int i = 0; i < m - k; ++i)
-                    {
-                        w[i] = dot_product_simd(&B.at(k + i, k + 1), v.data(), n - k - 1);
-                    }
+                        for (int j = 0; j < n - k - 1; ++j)
+                            w[i] += B.at(k + i, k + 1 + j) * v[j];
                     for (int i = 0; i < m - k; ++i)
-                    {
-                        double *row_ptr = &B.at(k + i, k + 1);
-                        subtract_scaled_vector_simd(row_ptr, v.data(), beta * w[i], n - k - 1);
-                    }
+                        for (int j = 0; j < n - k - 1; ++j)
+                            B.at(k + i, k + 1 + j) -= beta * w[i] * v[j];
 
                     // 累积 V：V_new = V_old * V_k
                     // V[:, k+1:n] -= beta * (V[:, k+1:n] * v) * v^T
                     std::vector<double> wV(n, 0.0);
                     for (int i = 0; i < n; ++i)
-                    {
-                        wV[i] = dot_product_simd(&V.at(i, k + 1), v.data(), n - k - 1);
-                    }
+                        for (int j = 0; j < n - k - 1; ++j)
+                            wV[i] += V.at(i, k + 1 + j) * v[j];
                     for (int i = 0; i < n; ++i)
-                    {
-                        double *row_ptr = &V.at(i, k + 1);
-                        subtract_scaled_vector_simd(row_ptr, v.data(), beta * wV[i], n - k - 1);
-                    }
+                        for (int j = 0; j < n - k - 1; ++j)
+                            V.at(i, k + 1 + j) -= beta * wV[i] * v[j];
                 }
             }
 
