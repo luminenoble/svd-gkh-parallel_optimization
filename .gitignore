@@ -1,0 +1,19 @@
+# test.sh输出内容
+*.exe
+*.out
+*.obj
+*.o
+*.sh
+
+# 主函数
+main
+main.cpp
+
+# test-wsl.sh输出的内容
+wsl-test-log/
+wsl-test-result/
+wsl-build/
+
+# 文档
+docs/
+CLAUDE.md
