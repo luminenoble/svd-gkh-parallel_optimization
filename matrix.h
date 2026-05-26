@@ -13,9 +13,22 @@ public:
     Matrix(int rows, int cols, double init = 0.0)
         : rows_(rows), cols_(cols), data_(rows * cols, init) {}
 
+    // 挂接到外部连续 double 缓冲（用于把 Matrix 视图直接落在 MPI 共享内存窗口上）。
+    // attach 后 at() 走外部缓冲，内部 data_ 被释放；detach 恢复内部存储但**不**保留数据。
+    void attach(double *external)
+    {
+        external_ = external;
+        std::vector<double>().swap(data_);
+    }
+    void detach() { external_ = nullptr; }
+    bool is_attached() const { return external_ != nullptr; }
+
+    double *raw() { return external_ != nullptr ? external_ : data_.data(); }
+    const double *raw() const { return external_ != nullptr ? external_ : data_.data(); }
+
     // 访问元素
-    double &at(int r, int c) { return data_[r * cols_ + c]; }
-    double at(int r, int c) const { return data_[r * cols_ + c]; }
+    double &at(int r, int c) { return raw()[r * cols_ + c]; }
+    double at(int r, int c) const { return raw()[r * cols_ + c]; }
 
     int rows() const { return rows_; }
     int cols() const { return cols_; }
@@ -79,4 +92,5 @@ public:
 private:
     int rows_, cols_;
     std::vector<double> data_;
+    double *external_ = nullptr;
 };

@@ -20,12 +20,16 @@
 #include <cmath>
 #include <stdexcept>
 #include <vector>
+#ifdef __aarch64__
 #include <arm_neon.h>
+#endif
 
 static inline double dot_product_simd(const double *lhs, const double *rhs, int len)
 {
-    float64x2_t acc = vdupq_n_f64(0.0);
     int i = 0;
+    double sum = 0.0;
+#ifdef __aarch64__
+    float64x2_t acc = vdupq_n_f64(0.0);
     for (; i + 1 < len; i += 2)
     {
         const float64x2_t a = vld1q_f64(lhs + i);
@@ -35,7 +39,8 @@ static inline double dot_product_simd(const double *lhs, const double *rhs, int 
 
     double tmp[2];
     vst1q_f64(tmp, acc);
-    double sum = tmp[0] + tmp[1];
+    sum = tmp[0] + tmp[1];
+#endif
     for (; i < len; ++i)
     {
         sum += lhs[i] * rhs[i];
@@ -45,14 +50,16 @@ static inline double dot_product_simd(const double *lhs, const double *rhs, int 
 
 static inline void subtract_scaled_vector_simd(double *dst, const double *src, double scale, int len)
 {
-    const float64x2_t vscale = vdupq_n_f64(scale);
     int i = 0;
+#ifdef __aarch64__
+    const float64x2_t vscale = vdupq_n_f64(scale);
     for (; i + 1 < len; i += 2)
     {
         const float64x2_t a = vld1q_f64(dst + i);
         const float64x2_t b = vld1q_f64(src + i);
         vst1q_f64(dst + i, vsubq_f64(a, vmulq_f64(vscale, b)));
     }
+#endif
     for (; i < len; ++i)
     {
         dst[i] -= scale * src[i];

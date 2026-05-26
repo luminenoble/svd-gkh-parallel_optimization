@@ -1,7 +1,9 @@
 #include "gkh.h"
 
 #include "givens.h"
+#ifdef __aarch64__
 #include <arm_neon.h>
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -14,6 +16,11 @@
 #include <stdexcept>
 #include <unistd.h>
 #include <vector>
+
+#ifdef USE_MPI
+#include <mpi.h>
+#include <cstdlib>
+#endif
 
 #ifndef GKH_PTHREAD_MIN_N
 #define GKH_PTHREAD_MIN_N 64
@@ -223,13 +230,14 @@ namespace
     static void apply_left_rows(Matrix &M, int r0, int r1, double c, double s)
     {
         const int n = M.cols();
-        const int n2 = n & ~1;
         double *p0 = &M.at(r0, 0);
         double *p1 = &M.at(r1, 0);
-        const float64x2_t vc = vdupq_n_f64(c);
-        const float64x2_t vs = vdupq_n_f64(s);
 
         int j = 0;
+#ifdef __aarch64__
+        const int n2 = n & ~1;
+        const float64x2_t vc = vdupq_n_f64(c);
+        const float64x2_t vs = vdupq_n_f64(s);
         for (; j < n2; j += 2)
         {
             const float64x2_t a = vld1q_f64(p0 + j);
@@ -237,6 +245,7 @@ namespace
             vst1q_f64(p0 + j, vaddq_f64(vmulq_f64(vc, a), vmulq_f64(vs, b)));
             vst1q_f64(p1 + j, vsubq_f64(vmulq_f64(vc, b), vmulq_f64(vs, a)));
         }
+#endif
 
         for (; j < n; ++j)
         {
@@ -251,11 +260,12 @@ namespace
     static void apply_right_cols(Matrix &M, int c0, int c1, double c, double s)
     {
         const int m = M.rows();
+
+        int i = 0;
+#ifdef __aarch64__
         const int m2 = m & ~1;
         const float64x2_t vc = vdupq_n_f64(c);
         const float64x2_t vs = vdupq_n_f64(s);
-
-        int i = 0;
         for (; i < m2; i += 2)
         {
             double a_buf[2] = {M.at(i, c0), M.at(i + 1, c0)};
@@ -271,6 +281,7 @@ namespace
             M.at(i + 1, c0) = out0[1];
             M.at(i + 1, c1) = out1[1];
         }
+#endif
 
         for (; i < m; ++i)
         {
@@ -287,13 +298,14 @@ namespace
                                      int col_begin, int col_end)
     {
         const int len = col_end - col_begin + 1;
-        const int len2 = len & ~1;
         double *p0 = &M.at(r0, col_begin);
         double *p1 = &M.at(r1, col_begin);
-        const float64x2_t vc = vdupq_n_f64(c);
-        const float64x2_t vs = vdupq_n_f64(s);
 
         int j = 0;
+#ifdef __aarch64__
+        const int len2 = len & ~1;
+        const float64x2_t vc = vdupq_n_f64(c);
+        const float64x2_t vs = vdupq_n_f64(s);
         for (; j < len2; j += 2)
         {
             const float64x2_t a = vld1q_f64(p0 + j);
@@ -301,6 +313,7 @@ namespace
             vst1q_f64(p0 + j, vaddq_f64(vmulq_f64(vc, a), vmulq_f64(vs, b)));
             vst1q_f64(p1 + j, vsubq_f64(vmulq_f64(vc, b), vmulq_f64(vs, a)));
         }
+#endif
 
         for (; j < len; ++j)
         {
@@ -316,10 +329,10 @@ namespace
                                       double c, double s,
                                       int row_begin, int row_end)
     {
+        int i = row_begin;
+#ifdef __aarch64__
         const float64x2_t vc = vdupq_n_f64(c);
         const float64x2_t vs = vdupq_n_f64(s);
-
-        int i = row_begin;
         for (; i + 1 <= row_end; i += 2)
         {
             double a_buf[2] = {M.at(i, c0), M.at(i + 1, c0)};
@@ -335,6 +348,7 @@ namespace
             M.at(i + 1, c0) = out0[1];
             M.at(i + 1, c1) = out1[1];
         }
+#endif
 
         for (; i <= row_end; ++i)
         {
@@ -543,6 +557,35 @@ namespace
         }
 
         return stopped_on_split;
+    }
+
+    // 与 multibubble 同结构，但 batch 数由 caller 传入；供 MPI 路径做动态 budget 调度。
+    static void one_block_step_record_uv_budget(Matrix &U, Matrix &B, Matrix &V,
+                                                int l, int r, double tol, int budget,
+                                                BlockRotations &rotations)
+    {
+        const int batch_count = std::max(1, budget);
+        rotations.l = l;
+        rotations.r = r;
+        rotations.bubbles_chased = 0;
+        rotations.stopped_on_split = false;
+        rotations.u_rotations.clear();
+        rotations.v_rotations.clear();
+        rotations.u_rotations.reserve(static_cast<size_t>(r - l) * batch_count);
+        rotations.v_rotations.reserve(static_cast<size_t>(r - l) * batch_count);
+
+        for (int bubble = 0; bubble < batch_count; ++bubble)
+        {
+            BlockRotations step_rotations;
+            one_block_step_record_uv(U, B, V, l, r, step_rotations);
+            append_rotations(rotations, step_rotations);
+
+            if (bubble + 1 < batch_count && block_has_converged_split(B, l, r, tol))
+            {
+                rotations.stopped_on_split = true;
+                break;
+            }
+        }
     }
 
     static int uv_apply_row_grain()
@@ -1208,5 +1251,701 @@ bool gkh_svd_from_bidiagonal_pthread(Matrix &U, Matrix &B, Matrix &V,
 
 bool gkh_svd_from_bidiagonal(Matrix &U, Matrix &B, Matrix &V, int max_iter, double tol)
 {
+#ifdef USE_MPI
+    return gkh_svd_from_bidiagonal_mpi(U, B, V, max_iter, tol);
+#else
     return gkh_svd_from_bidiagonal_pthread(U, B, V, max_iter, tol, 0);
+#endif
 }
+
+#ifdef USE_MPI
+
+// ===== Stage 1-3 MPI 实现 =====
+//
+// 架构：
+//   - rank 0 是 master/调度器；rank 1..P-1 是 worker。
+//   - 节点内：MPI_Comm_split_type(SHARED) 创建 node_comm，allocate_shared 一块 B 窗口；
+//     节点内所有 rank 通过裸指针 load/store 访问同一物理内存（零拷贝）。
+//   - 同节点 worker（same_node_as_master）：直接读写共享 B，用绝对坐标 l..r。
+//   - 跨节点 worker：master 随 task 发 B 段，worker 用局部坐标 0..side-1，结果回带 B 段。
+//   - 通信：
+//       Task 用 persistent MPI_Send_init/MPI_Start（固定 28B），避免反复 envelope；
+//       Result 用 MPI_Pack + MPI_Isend（变长），master 端 MPI_Probe 探长度 + MPI_Recv；
+//       事件驱动主循环：发 task → Probe → 收 → 应用 → 再派；不会忙等也不会先发完再统一收。
+//   - Worker 双 LogBuf：用 Isend 异步发本次结果，与下一次任务的计算重叠。
+//   - 动态 budget：剩余 block 数远多于 worker 时大 batch；接近尾声切到小 batch（减少负载不均）。
+//
+// 生命周期：
+//   - MpiBootstrap ctor: MPI_Init + 建 node_comm + 全 rank 信息表；非 0 rank 进 worker 循环。
+//   - 每次 gkh_svd_from_bidiagonal_mpi: master 给所有 worker 发 PROBLEM_BEGIN（含 m,n）→
+//       alloc 共享 B 窗口 → master 写 B 到 shared_B → 给远程节点的 node-master 发 B 副本 →
+//       GKH 迭代（事件驱动派发） → 发 PROBLEM_END → free 共享 B 窗口。
+//   - MpiBootstrap dtor: master 发 STOP_PROGRAM；所有 rank Finalize。
+
+namespace
+{
+    constexpr int TAG_TASK = 100;
+    constexpr int TAG_B_INIT = 101;  // 跨节点 node-master 收 B 初值
+    constexpr int TAG_B_SEG = 102;   // 跨节点 worker 收 task B 段
+    constexpr int TAG_RESULT = 103;  // 变长打包结果
+
+    constexpr int TASK_KIND_BLOCK_STEP = 0;
+    constexpr int TASK_KIND_PROBLEM_BEGIN = 1;
+    constexpr int TASK_KIND_PROBLEM_END = 2;
+    constexpr int TASK_KIND_STOP_PROGRAM = 3;
+
+    constexpr int MPI_BUDGET_BIG = 64;
+    constexpr int MPI_BUDGET_MID = 16;
+    constexpr int MPI_BUDGET_SMALL = 4;
+
+    struct MpiTaskHeader
+    {
+        int kind;
+        int l;
+        int r;
+        int budget;
+        int gen;
+        int m;
+        int n;
+    };
+
+    struct MpiResultHeader
+    {
+        int worker;
+        int l;
+        int r;
+        int n_u;
+        int n_v;
+        int bubbles_chased;
+        int has_b_seg;       // 0=共享内存路径，1=跨节点带 B 段
+        int stopped_on_split;
+        double ms_used;
+    };
+
+    struct MpiState
+    {
+        bool world_setup_done = false;
+        MPI_Comm node_comm = MPI_COMM_NULL;
+        int world_rank = 0;
+        int world_size = 1;
+        int node_rank = 0;
+        int node_size = 1;
+        std::vector<int> world_rank_to_node_master;       // [w] -> w 所在节点 node-master 的 world rank
+        std::vector<unsigned char> same_node_as_master;   // 仅 master 用
+
+        bool problem_setup_done = false;
+        int m_dim = 0;
+        int n_dim = 0;
+        MPI_Win win_B = MPI_WIN_NULL;
+        double *shared_B = nullptr;
+
+        // master 持久 task send
+        std::vector<MPI_Request> task_send_reqs;
+        std::vector<MpiTaskHeader> task_send_bufs;
+
+        // master 调度状态
+        std::vector<unsigned char> worker_busy;
+        std::vector<int> worker_current_l;
+        std::vector<int> worker_current_r;
+
+        long long generation = 0;
+    };
+    static MpiState g_mpi;
+
+    static void mpi_teardown_problem();  // forward
+
+    static bool worker_shares_memory_with_master(int worker_rank)
+    {
+        return g_mpi.world_rank_to_node_master[worker_rank] ==
+               g_mpi.world_rank_to_node_master[0];
+    }
+
+    static void pack_B_sub(const Matrix &B, int l, int r, double *buf)
+    {
+        const int side = r - l + 1;
+        for (int i = 0; i < side; ++i)
+            for (int j = 0; j < side; ++j)
+                buf[i * side + j] = B.at(l + i, l + j);
+    }
+
+    static void unpack_B_sub(Matrix &B, int l, int r, const double *buf)
+    {
+        const int side = r - l + 1;
+        for (int i = 0; i < side; ++i)
+            for (int j = 0; j < side; ++j)
+                B.at(l + i, l + j) = buf[i * side + j];
+    }
+
+    // ===== 全局一次性 setup（MpiBootstrap ctor 调用）=====
+    static void mpi_setup_world_once()
+    {
+        if (g_mpi.world_setup_done) return;
+        MPI_Comm_rank(MPI_COMM_WORLD, &g_mpi.world_rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &g_mpi.world_size);
+
+        MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED,
+                            g_mpi.world_rank, MPI_INFO_NULL, &g_mpi.node_comm);
+        MPI_Comm_rank(g_mpi.node_comm, &g_mpi.node_rank);
+        MPI_Comm_size(g_mpi.node_comm, &g_mpi.node_size);
+
+        // 本节点 node_rank=0 在 world 中的 rank
+        int my_node_master_world = 0;
+        {
+            MPI_Group wgrp, ngrp;
+            MPI_Comm_group(MPI_COMM_WORLD, &wgrp);
+            MPI_Comm_group(g_mpi.node_comm, &ngrp);
+            int zero = 0;
+            MPI_Group_translate_ranks(ngrp, 1, &zero, wgrp, &my_node_master_world);
+            MPI_Group_free(&wgrp);
+            MPI_Group_free(&ngrp);
+        }
+        g_mpi.world_rank_to_node_master.assign(g_mpi.world_size, 0);
+        MPI_Allgather(&my_node_master_world, 1, MPI_INT,
+                      g_mpi.world_rank_to_node_master.data(), 1, MPI_INT,
+                      MPI_COMM_WORLD);
+
+        if (g_mpi.world_rank == 0)
+        {
+            g_mpi.same_node_as_master.assign(g_mpi.world_size, 0);
+            const int master_node = g_mpi.world_rank_to_node_master[0];
+            for (int w = 0; w < g_mpi.world_size; ++w)
+            {
+                g_mpi.same_node_as_master[w] =
+                    (g_mpi.world_rank_to_node_master[w] == master_node) ? 1 : 0;
+            }
+        }
+        g_mpi.world_setup_done = true;
+    }
+
+    // ===== Per-problem setup =====
+    static void mpi_setup_problem(int m, int n)
+    {
+        if (g_mpi.problem_setup_done) mpi_teardown_problem();
+        g_mpi.m_dim = m;
+        g_mpi.n_dim = n;
+
+        MPI_Aint size_bytes = (g_mpi.node_rank == 0)
+                                  ? static_cast<MPI_Aint>(sizeof(double)) * m * n
+                                  : 0;
+        void *baseptr = nullptr;
+        MPI_Win_allocate_shared(size_bytes, sizeof(double), MPI_INFO_NULL,
+                                g_mpi.node_comm, &baseptr, &g_mpi.win_B);
+        if (g_mpi.node_rank == 0)
+        {
+            g_mpi.shared_B = static_cast<double *>(baseptr);
+        }
+        else
+        {
+            MPI_Aint qsize;
+            int qdisp;
+            void *qbase;
+            MPI_Win_shared_query(g_mpi.win_B, 0, &qsize, &qdisp, &qbase);
+            g_mpi.shared_B = static_cast<double *>(qbase);
+        }
+        MPI_Win_lock_all(MPI_MODE_NOCHECK, g_mpi.win_B);
+
+        if (g_mpi.world_rank == 0)
+        {
+            const int P = g_mpi.world_size;
+            g_mpi.task_send_bufs.assign(P, MpiTaskHeader{});
+            g_mpi.task_send_reqs.assign(P, MPI_REQUEST_NULL);
+            for (int w = 1; w < P; ++w)
+            {
+                MPI_Send_init(&g_mpi.task_send_bufs[w], sizeof(MpiTaskHeader),
+                              MPI_BYTE, w, TAG_TASK, MPI_COMM_WORLD,
+                              &g_mpi.task_send_reqs[w]);
+            }
+            g_mpi.worker_busy.assign(P, 0);
+            g_mpi.worker_current_l.assign(P, 0);
+            g_mpi.worker_current_r.assign(P, 0);
+        }
+
+        g_mpi.problem_setup_done = true;
+    }
+
+    static void mpi_teardown_problem()
+    {
+        if (!g_mpi.problem_setup_done) return;
+        if (g_mpi.world_rank == 0)
+        {
+            for (auto &req : g_mpi.task_send_reqs)
+                if (req != MPI_REQUEST_NULL) MPI_Request_free(&req);
+            g_mpi.task_send_reqs.clear();
+            g_mpi.task_send_bufs.clear();
+            g_mpi.worker_busy.clear();
+            g_mpi.worker_current_l.clear();
+            g_mpi.worker_current_r.clear();
+        }
+        if (g_mpi.win_B != MPI_WIN_NULL)
+        {
+            MPI_Win_unlock_all(g_mpi.win_B);
+            MPI_Win_free(&g_mpi.win_B);  // 集合操作，与所有 node_comm rank 同步
+            g_mpi.win_B = MPI_WIN_NULL;
+            g_mpi.shared_B = nullptr;
+        }
+        g_mpi.m_dim = 0;
+        g_mpi.n_dim = 0;
+        g_mpi.problem_setup_done = false;
+    }
+
+    // ===== Worker 端结构 =====
+    struct LogBuf
+    {
+        std::vector<char> bytes;
+        MPI_Request send_req = MPI_REQUEST_NULL;
+    };
+
+    struct WorkerScratch
+    {
+        Matrix Udummy{1, 1};
+        Matrix Vdummy{1, 1};
+        Matrix Bshared_view;
+        Matrix Bloc;
+        BlockRotations rotations;
+        std::vector<double> b_seg_buf;
+        LogBuf log_a, log_b;
+        LogBuf *current = nullptr;
+    };
+
+    static double now_ms_mono()
+    {
+        using clk = std::chrono::steady_clock;
+        static const auto t0 = clk::now();
+        return std::chrono::duration<double, std::milli>(clk::now() - t0).count();
+    }
+
+    static void worker_pack_and_isend_result(WorkerScratch &ws,
+                                             const MpiResultHeader &rhdr,
+                                             const std::vector<Rotation> &u_rot,
+                                             const std::vector<Rotation> &v_rot,
+                                             const double *b_seg, int b_seg_count)
+    {
+        // 双 LogBuf 交替；本次目标 buffer 必须等其上次 Isend 已完成
+        ws.current = (ws.current == &ws.log_a) ? &ws.log_b : &ws.log_a;
+        if (ws.current->send_req != MPI_REQUEST_NULL)
+        {
+            MPI_Wait(&ws.current->send_req, MPI_STATUS_IGNORE);
+            ws.current->send_req = MPI_REQUEST_NULL;
+        }
+
+        const int hdr_bytes = static_cast<int>(sizeof(MpiResultHeader));
+        const int u_bytes = static_cast<int>(u_rot.size() * sizeof(Rotation));
+        const int v_bytes = static_cast<int>(v_rot.size() * sizeof(Rotation));
+        const int b_bytes = b_seg_count * static_cast<int>(sizeof(double));
+
+        int bytes_needed = 0;
+        MPI_Pack_size(hdr_bytes + u_bytes + v_bytes + b_bytes,
+                      MPI_BYTE, MPI_COMM_WORLD, &bytes_needed);
+        ws.current->bytes.resize(static_cast<size_t>(bytes_needed));
+
+        int pos = 0;
+        MPI_Pack(&rhdr, hdr_bytes, MPI_BYTE,
+                 ws.current->bytes.data(), bytes_needed, &pos, MPI_COMM_WORLD);
+        if (u_bytes > 0)
+            MPI_Pack(u_rot.data(), u_bytes, MPI_BYTE,
+                     ws.current->bytes.data(), bytes_needed, &pos, MPI_COMM_WORLD);
+        if (v_bytes > 0)
+            MPI_Pack(v_rot.data(), v_bytes, MPI_BYTE,
+                     ws.current->bytes.data(), bytes_needed, &pos, MPI_COMM_WORLD);
+        if (b_bytes > 0)
+            MPI_Pack(b_seg, b_bytes, MPI_BYTE,
+                     ws.current->bytes.data(), bytes_needed, &pos, MPI_COMM_WORLD);
+
+        MPI_Isend(ws.current->bytes.data(), pos, MPI_PACKED, 0, TAG_RESULT,
+                  MPI_COMM_WORLD, &ws.current->send_req);
+    }
+
+    static void worker_serve_block_step(const MpiTaskHeader &hdr, WorkerScratch &ws)
+    {
+        const double t_begin = now_ms_mono();
+        const int l = hdr.l, r = hdr.r;
+        const int side = r - l + 1;
+        const bool shared_path = worker_shares_memory_with_master(g_mpi.world_rank);
+
+        if (shared_path)
+        {
+            MPI_Win_sync(g_mpi.win_B);  // 看到 master 最新写
+            if (!ws.Bshared_view.is_attached() ||
+                ws.Bshared_view.rows() != g_mpi.m_dim ||
+                ws.Bshared_view.cols() != g_mpi.n_dim)
+            {
+                ws.Bshared_view = Matrix(g_mpi.m_dim, g_mpi.n_dim);
+                ws.Bshared_view.attach(g_mpi.shared_B);
+            }
+            one_block_step_record_uv_budget(ws.Udummy, ws.Bshared_view, ws.Vdummy,
+                                            l, r, 1e-12, hdr.budget, ws.rotations);
+            MPI_Win_sync(g_mpi.win_B);  // 让本次写对其它 rank 可见
+        }
+        else
+        {
+            ws.b_seg_buf.assign(static_cast<size_t>(side) * side, 0.0);
+            MPI_Recv(ws.b_seg_buf.data(), side * side, MPI_DOUBLE, 0,
+                     TAG_B_SEG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            if (ws.Bloc.rows() != side || ws.Bloc.cols() != side)
+                ws.Bloc = Matrix(side, side);
+            for (int i = 0; i < side; ++i)
+                for (int j = 0; j < side; ++j)
+                    ws.Bloc.at(i, j) = ws.b_seg_buf[i * side + j];
+            one_block_step_record_uv_budget(ws.Udummy, ws.Bloc, ws.Vdummy,
+                                            0, side - 1, 1e-12, hdr.budget, ws.rotations);
+            for (int i = 0; i < side; ++i)
+                for (int j = 0; j < side; ++j)
+                    ws.b_seg_buf[i * side + j] = ws.Bloc.at(i, j);
+        }
+
+        MpiResultHeader rhdr{};
+        rhdr.worker = g_mpi.world_rank;
+        rhdr.l = l;
+        rhdr.r = r;
+        rhdr.n_u = static_cast<int>(ws.rotations.u_rotations.size());
+        rhdr.n_v = static_cast<int>(ws.rotations.v_rotations.size());
+        rhdr.bubbles_chased = ws.rotations.bubbles_chased;
+        rhdr.has_b_seg = shared_path ? 0 : 1;
+        rhdr.stopped_on_split = ws.rotations.stopped_on_split ? 1 : 0;
+        rhdr.ms_used = now_ms_mono() - t_begin;
+
+        worker_pack_and_isend_result(ws, rhdr,
+                                     ws.rotations.u_rotations,
+                                     ws.rotations.v_rotations,
+                                     shared_path ? nullptr : ws.b_seg_buf.data(),
+                                     shared_path ? 0 : side * side);
+    }
+
+    static void worker_problem_begin(const MpiTaskHeader &hdr)
+    {
+        mpi_setup_problem(hdr.m, hdr.n);
+
+        const bool master_node = (g_mpi.world_rank_to_node_master[g_mpi.world_rank] ==
+                                  g_mpi.world_rank_to_node_master[0]);
+        // 远程节点的 node-master 收 master 发的 B 初值
+        if (g_mpi.node_rank == 0 && !master_node)
+        {
+            MPI_Recv(g_mpi.shared_B, hdr.m * hdr.n, MPI_DOUBLE, 0,
+                     TAG_B_INIT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+        MPI_Win_sync(g_mpi.win_B);
+        MPI_Barrier(g_mpi.node_comm);  // 节点内所有 rank 看到 B
+    }
+
+    static void worker_problem_end(WorkerScratch &ws)
+    {
+        for (LogBuf *buf : { &ws.log_a, &ws.log_b })
+        {
+            if (buf->send_req != MPI_REQUEST_NULL)
+            {
+                MPI_Wait(&buf->send_req, MPI_STATUS_IGNORE);
+                buf->send_req = MPI_REQUEST_NULL;
+            }
+        }
+        ws.current = nullptr;
+        if (ws.Bshared_view.is_attached()) ws.Bshared_view.detach();
+        mpi_teardown_problem();  // 集合 Win_free，与 master 同步
+    }
+}  // namespace
+
+void gkh_mpi_worker_main_loop()
+{
+    WorkerScratch ws;
+    while (true)
+    {
+        MpiTaskHeader hdr;
+        MPI_Recv(&hdr, sizeof(hdr), MPI_BYTE, 0, TAG_TASK,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+        if (hdr.kind == TASK_KIND_STOP_PROGRAM)
+        {
+            for (LogBuf *buf : { &ws.log_a, &ws.log_b })
+                if (buf->send_req != MPI_REQUEST_NULL)
+                    MPI_Wait(&buf->send_req, MPI_STATUS_IGNORE);
+            return;
+        }
+        switch (hdr.kind)
+        {
+        case TASK_KIND_PROBLEM_BEGIN:
+            worker_problem_begin(hdr);
+            break;
+        case TASK_KIND_PROBLEM_END:
+            worker_problem_end(ws);
+            break;
+        case TASK_KIND_BLOCK_STEP:
+            worker_serve_block_step(hdr, ws);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+void gkh_mpi_master_send_stop_all()
+{
+    if (g_mpi.world_size < 2) return;
+    MpiTaskHeader stop{};
+    stop.kind = TASK_KIND_STOP_PROGRAM;
+    for (int w = 1; w < g_mpi.world_size; ++w)
+    {
+        MPI_Send(&stop, sizeof(stop), MPI_BYTE, w, TAG_TASK, MPI_COMM_WORLD);
+    }
+}
+
+// ===== Master 调度辅助 =====
+namespace
+{
+    static int mpi_choose_budget(int remaining_blocks, int workers)
+    {
+        if (workers <= 0) workers = 1;
+        if (remaining_blocks > workers * 8) return MPI_BUDGET_BIG;
+        if (remaining_blocks > workers * 2) return MPI_BUDGET_MID;
+        return MPI_BUDGET_SMALL;
+    }
+
+    static void master_dispatch_one(int worker, int l, int r, int budget,
+                                    const Matrix &B)
+    {
+        auto &buf = g_mpi.task_send_bufs[worker];
+        buf.kind = TASK_KIND_BLOCK_STEP;
+        buf.l = l;
+        buf.r = r;
+        buf.budget = budget;
+        buf.gen = static_cast<int>(g_mpi.generation++);
+        buf.m = g_mpi.m_dim;
+        buf.n = g_mpi.n_dim;
+        MPI_Start(&g_mpi.task_send_reqs[worker]);
+        MPI_Wait(&g_mpi.task_send_reqs[worker], MPI_STATUS_IGNORE);
+
+        if (!g_mpi.same_node_as_master[worker])
+        {
+            const int side = r - l + 1;
+            std::vector<double> b_seg(static_cast<size_t>(side) * side);
+            pack_B_sub(B, l, r, b_seg.data());
+            MPI_Send(b_seg.data(), side * side, MPI_DOUBLE, worker,
+                     TAG_B_SEG, MPI_COMM_WORLD);
+        }
+
+        g_mpi.worker_busy[worker] = 1;
+        g_mpi.worker_current_l[worker] = l;
+        g_mpi.worker_current_r[worker] = r;
+    }
+
+    static void master_collect_one(Matrix &U, Matrix &V, Matrix &B)
+    {
+        MPI_Status st;
+        MPI_Probe(MPI_ANY_SOURCE, TAG_RESULT, MPI_COMM_WORLD, &st);
+        int byte_count = 0;
+        MPI_Get_count(&st, MPI_PACKED, &byte_count);
+        std::vector<char> recv_buf(static_cast<size_t>(byte_count));
+        MPI_Recv(recv_buf.data(), byte_count, MPI_PACKED, st.MPI_SOURCE,
+                 TAG_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+        int pos = 0;
+        MpiResultHeader rhdr{};
+        MPI_Unpack(recv_buf.data(), byte_count, &pos, &rhdr,
+                   sizeof(rhdr), MPI_BYTE, MPI_COMM_WORLD);
+        std::vector<Rotation> u_rot(rhdr.n_u), v_rot(rhdr.n_v);
+        if (rhdr.n_u > 0)
+            MPI_Unpack(recv_buf.data(), byte_count, &pos, u_rot.data(),
+                       static_cast<int>(rhdr.n_u * sizeof(Rotation)),
+                       MPI_BYTE, MPI_COMM_WORLD);
+        if (rhdr.n_v > 0)
+            MPI_Unpack(recv_buf.data(), byte_count, &pos, v_rot.data(),
+                       static_cast<int>(rhdr.n_v * sizeof(Rotation)),
+                       MPI_BYTE, MPI_COMM_WORLD);
+
+        const int l = rhdr.l, r = rhdr.r;
+        if (rhdr.has_b_seg)
+        {
+            const int side = r - l + 1;
+            std::vector<double> b_seg(static_cast<size_t>(side) * side);
+            MPI_Unpack(recv_buf.data(), byte_count, &pos, b_seg.data(),
+                       side * side, MPI_DOUBLE, MPI_COMM_WORLD);
+            unpack_B_sub(B, l, r, b_seg.data());
+            for (const auto &rot : u_rot)
+                apply_right_cols(U, rot.c0 + l, rot.c1 + l, rot.c, rot.s);
+            for (const auto &rot : v_rot)
+                apply_right_cols(V, rot.c0 + l, rot.c1 + l, rot.c, rot.s);
+        }
+        else
+        {
+            // 共享内存路径：worker 已直接写 shared_B（== master 的 B）；坐标已经是绝对。
+            for (const auto &rot : u_rot)
+                apply_right_cols(U, rot.c0, rot.c1, rot.c, rot.s);
+            for (const auto &rot : v_rot)
+                apply_right_cols(V, rot.c0, rot.c1, rot.c, rot.s);
+        }
+        g_mpi.worker_busy[rhdr.worker] = 0;
+    }
+
+    static void master_broadcast_problem_begin(int m, int n)
+    {
+        for (int w = 1; w < g_mpi.world_size; ++w)
+        {
+            auto &buf = g_mpi.task_send_bufs[w];
+            buf = MpiTaskHeader{};
+            buf.kind = TASK_KIND_PROBLEM_BEGIN;
+            buf.m = m;
+            buf.n = n;
+            MPI_Start(&g_mpi.task_send_reqs[w]);
+            MPI_Wait(&g_mpi.task_send_reqs[w], MPI_STATUS_IGNORE);
+        }
+    }
+
+    static void master_broadcast_problem_end()
+    {
+        for (int w = 1; w < g_mpi.world_size; ++w)
+        {
+            auto &buf = g_mpi.task_send_bufs[w];
+            buf = MpiTaskHeader{};
+            buf.kind = TASK_KIND_PROBLEM_END;
+            MPI_Start(&g_mpi.task_send_reqs[w]);
+            MPI_Wait(&g_mpi.task_send_reqs[w], MPI_STATUS_IGNORE);
+        }
+    }
+}  // namespace
+
+// ===== MpiBootstrap =====
+namespace
+{
+    struct MpiBootstrap
+    {
+        MpiBootstrap()
+        {
+            int initialized = 0;
+            MPI_Initialized(&initialized);
+            if (!initialized) MPI_Init(nullptr, nullptr);
+            mpi_setup_world_once();
+            if (g_mpi.world_rank != 0)
+            {
+                gkh_mpi_worker_main_loop();
+                if (g_mpi.node_comm != MPI_COMM_NULL) MPI_Comm_free(&g_mpi.node_comm);
+                MPI_Finalize();
+                std::_Exit(0);
+            }
+        }
+        ~MpiBootstrap()
+        {
+            int finalized = 0;
+            MPI_Finalized(&finalized);
+            if (finalized) return;
+            gkh_mpi_master_send_stop_all();
+            if (g_mpi.node_comm != MPI_COMM_NULL) MPI_Comm_free(&g_mpi.node_comm);
+            MPI_Finalize();
+        }
+    };
+    static MpiBootstrap g_mpi_bootstrap;
+}
+
+// ===== Public API =====
+bool gkh_svd_from_bidiagonal_mpi(Matrix &U, Matrix &B, Matrix &V,
+                                 int max_iter, double tol)
+{
+    if (g_mpi.world_rank != 0)
+        return gkh_svd_from_bidiagonal_serial(U, B, V, max_iter, tol);
+    if (g_mpi.world_size < 2)
+        return gkh_svd_from_bidiagonal_serial(U, B, V, max_iter, tol);
+
+    const int m = B.rows();
+    const int n = B.cols();
+    validate_gkh_inputs(U, B, V);
+
+    mpi_setup_problem(m, n);
+
+    // master 写 B 到共享窗口
+    for (int i = 0; i < m; ++i)
+        for (int j = 0; j < n; ++j)
+            g_mpi.shared_B[i * n + j] = B.at(i, j);
+    MPI_Win_sync(g_mpi.win_B);
+
+    // 通知所有 worker 新问题开始
+    master_broadcast_problem_begin(m, n);
+
+    // 给远程节点的 node-master 发 B 初值（同节点的不用，已通过共享窗口）
+    std::vector<int> sent_nodes;
+    for (int w = 1; w < g_mpi.world_size; ++w)
+    {
+        if (g_mpi.same_node_as_master[w]) continue;
+        const int nm = g_mpi.world_rank_to_node_master[w];
+        if (w != nm) continue;  // 只给该节点的 node-master 发
+        if (std::find(sent_nodes.begin(), sent_nodes.end(), nm) != sent_nodes.end())
+            continue;
+        MPI_Send(g_mpi.shared_B, m * n, MPI_DOUBLE, nm, TAG_B_INIT, MPI_COMM_WORLD);
+        sent_nodes.push_back(nm);
+    }
+    MPI_Win_sync(g_mpi.win_B);
+    MPI_Barrier(g_mpi.node_comm);  // master 节点内同步
+
+    // master 把 B attach 到共享窗口：cleanup/handle_diag_zeros 直接改 shared
+    B.attach(g_mpi.shared_B);
+
+    bool converged = false;
+    const int workers = g_mpi.world_size - 1;
+
+    struct PendingBlock { int l; int r; };
+
+    for (int iter = 0; iter < max_iter; ++iter)
+    {
+        cleanup_bidiagonal(B, tol);
+        handle_diagonal_zeros(U, B, V, tol);
+
+        std::vector<Block> blocks = split_active_blocks(B, n, tol);
+
+        std::vector<PendingBlock> pending;
+        pending.reserve(blocks.size());
+        for (const auto &blk : blocks)
+            if (blk.r > blk.l) pending.push_back({blk.l, blk.r});
+
+        if (pending.empty()) { converged = true; break; }
+
+        // LPT：按长度降序
+        std::sort(pending.begin(), pending.end(),
+                  [](const PendingBlock &a, const PendingBlock &b) {
+                      return (a.r - a.l) > (b.r - b.l);
+                  });
+
+        // master 写 B 完毕，让 worker 可见
+        MPI_Win_sync(g_mpi.win_B);
+
+        size_t next_idx = 0;
+        int in_flight = 0;
+        for (int w = 1; w < g_mpi.world_size && next_idx < pending.size(); ++w)
+        {
+            const auto &pb = pending[next_idx++];
+            const int remaining = static_cast<int>(pending.size() - next_idx + 1);
+            master_dispatch_one(w, pb.l, pb.r,
+                                mpi_choose_budget(remaining, workers), B);
+            ++in_flight;
+        }
+        while (in_flight > 0)
+        {
+            master_collect_one(U, V, B);
+            --in_flight;
+            if (next_idx < pending.size())
+            {
+                const auto &pb = pending[next_idx++];
+                const int remaining = static_cast<int>(pending.size() - next_idx + 1);
+                int chosen = -1;
+                for (int w = 1; w < g_mpi.world_size; ++w)
+                    if (!g_mpi.worker_busy[w]) { chosen = w; break; }
+                if (chosen < 0) chosen = 1;  // 兜底
+                master_dispatch_one(chosen, pb.l, pb.r,
+                                    mpi_choose_budget(remaining, workers), B);
+                ++in_flight;
+            }
+        }
+    }
+
+    master_broadcast_problem_end();
+
+    // 把 shared B 拷回 B 的内部存储后 detach（mpi_teardown_problem 会 free 窗口）
+    {
+        Matrix new_B(m, n);
+        for (int i = 0; i < m; ++i)
+            for (int j = 0; j < n; ++j)
+                new_B.at(i, j) = g_mpi.shared_B[i * n + j];
+        B = new_B;  // 默认拷贝赋值：B.external_ 被 new_B.external_=nullptr 覆盖，B 重获内部存储
+    }
+    mpi_teardown_problem();
+
+    finalize_gkh_output(U, B, V, tol);
+    return converged;
+}
+
+#endif // USE_MPI
