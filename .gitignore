@@ -3,11 +3,9 @@
 *.out
 *.obj
 *.o
-*.sh
 
-# 主函数
+# 编译产物（每个工作树/平台不同，aarch64 上需要 §0.1 重新编译）
 main
-main.cpp
 
 # test-wsl.sh输出的内容
 wsl-test-log/
