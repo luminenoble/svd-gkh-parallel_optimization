@@ -1444,21 +1444,8 @@ namespace
         }
         MPI_Win_lock_all(MPI_MODE_NOCHECK, g_mpi.win_B);
 
-        if (g_mpi.world_rank == 0)
-        {
-            const int P = g_mpi.world_size;
-            g_mpi.task_send_bufs.assign(P, MpiTaskHeader{});
-            g_mpi.task_send_reqs.assign(P, MPI_REQUEST_NULL);
-            for (int w = 1; w < P; ++w)
-            {
-                MPI_Send_init(&g_mpi.task_send_bufs[w], sizeof(MpiTaskHeader),
-                              MPI_BYTE, w, TAG_TASK, MPI_COMM_WORLD,
-                              &g_mpi.task_send_reqs[w]);
-            }
-            g_mpi.worker_busy.assign(P, 0);
-            g_mpi.worker_current_l.assign(P, 0);
-            g_mpi.worker_current_r.assign(P, 0);
-        }
+        // 注：持久任务发送请求 / worker 状态已在 MpiBootstrap ctor 一次性初始化，
+        // 此处只处理与 (m, n) 相关的窗口分配。
 
         g_mpi.problem_setup_done = true;
     }
@@ -1466,16 +1453,7 @@ namespace
     static void mpi_teardown_problem()
     {
         if (!g_mpi.problem_setup_done) return;
-        if (g_mpi.world_rank == 0)
-        {
-            for (auto &req : g_mpi.task_send_reqs)
-                if (req != MPI_REQUEST_NULL) MPI_Request_free(&req);
-            g_mpi.task_send_reqs.clear();
-            g_mpi.task_send_bufs.clear();
-            g_mpi.worker_busy.clear();
-            g_mpi.worker_current_l.clear();
-            g_mpi.worker_current_r.clear();
-        }
+        // 持久任务请求 / worker 状态生命周期 = MpiBootstrap，per-problem 不动。
         if (g_mpi.win_B != MPI_WIN_NULL)
         {
             MPI_Win_unlock_all(g_mpi.win_B);
@@ -1812,6 +1790,24 @@ namespace
             MPI_Initialized(&initialized);
             if (!initialized) MPI_Init(nullptr, nullptr);
             mpi_setup_world_once();
+            // master 一次性初始化持久任务发送请求（依赖 world_size，与 m/n 无关）。
+            // 必须先于任何 broadcast / mpi_setup_problem，避免 worker 卡在 TAG_TASK
+            // 而 master 卡在 Win_allocate_shared 上的双向死锁。
+            if (g_mpi.world_rank == 0)
+            {
+                const int P = g_mpi.world_size;
+                g_mpi.task_send_bufs.assign(P, MpiTaskHeader{});
+                g_mpi.task_send_reqs.assign(P, MPI_REQUEST_NULL);
+                for (int w = 1; w < P; ++w)
+                {
+                    MPI_Send_init(&g_mpi.task_send_bufs[w], sizeof(MpiTaskHeader),
+                                  MPI_BYTE, w, TAG_TASK, MPI_COMM_WORLD,
+                                  &g_mpi.task_send_reqs[w]);
+                }
+                g_mpi.worker_busy.assign(P, 0);
+                g_mpi.worker_current_l.assign(P, 0);
+                g_mpi.worker_current_r.assign(P, 0);
+            }
             if (g_mpi.world_rank != 0)
             {
                 gkh_mpi_worker_main_loop();
@@ -1826,6 +1822,16 @@ namespace
             MPI_Finalized(&finalized);
             if (finalized) return;
             gkh_mpi_master_send_stop_all();
+            if (g_mpi.world_rank == 0)
+            {
+                for (auto &req : g_mpi.task_send_reqs)
+                    if (req != MPI_REQUEST_NULL) MPI_Request_free(&req);
+                g_mpi.task_send_reqs.clear();
+                g_mpi.task_send_bufs.clear();
+                g_mpi.worker_busy.clear();
+                g_mpi.worker_current_l.clear();
+                g_mpi.worker_current_r.clear();
+            }
             if (g_mpi.node_comm != MPI_COMM_NULL) MPI_Comm_free(&g_mpi.node_comm);
             MPI_Finalize();
         }
@@ -1846,16 +1852,19 @@ bool gkh_svd_from_bidiagonal_mpi(Matrix &U, Matrix &B, Matrix &V,
     const int n = B.cols();
     validate_gkh_inputs(U, B, V);
 
+    // 必须先 broadcast 释放 worker，再进入 mpi_setup_problem 的集合操作
+    // （MPI_Win_allocate_shared 是 node_comm collective）。
+    // 否则 master 卡在 Win_allocate_shared 等 worker，worker 卡在 MPI_Recv(TAG_TASK)
+    // 等 master：双向死锁。
+    master_broadcast_problem_begin(m, n);
+
     mpi_setup_problem(m, n);
 
-    // master 写 B 到共享窗口
+    // master 写 B 到共享窗口（setup 完成后窗口已分配）
     for (int i = 0; i < m; ++i)
         for (int j = 0; j < n; ++j)
             g_mpi.shared_B[i * n + j] = B.at(i, j);
     MPI_Win_sync(g_mpi.win_B);
-
-    // 通知所有 worker 新问题开始
-    master_broadcast_problem_begin(m, n);
 
     // 给远程节点的 node-master 发 B 初值（同节点的不用，已通过共享窗口）
     std::vector<int> sent_nodes;
