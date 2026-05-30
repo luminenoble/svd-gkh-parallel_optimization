@@ -3,13 +3,12 @@
 *.out
 *.obj
 *.o
-*.sh
 
-# 主函数
+# 编译产物（每个工作树/平台不同，aarch64 上需要 §0.1 重新编译）
 main
-main.cpp
 
-# test-wsl.sh输出的内容
+# test-wsl.sh 及其输出（WSL 专属辅助脚本，不发布）
+test-wsl.sh
 wsl-test-log/
 wsl-test-result/
 wsl-build/
