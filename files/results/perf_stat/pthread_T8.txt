@@ -1,0 +1,16 @@
+# started on Sat May 30 16:21:13 2026
+
+
+ Performance counter stats for 'env GKH_PTHREAD_THREADS=8 GKH_PTHREAD_STATS=0 /home/s2412737/svd/files/bin/main_pthread 20260307':
+
+           414,549      cycles:u                                                    
+           287,032      instructions:u            #    0.69  insn per cycle         
+            96,986      cache-references:u                                          
+             2,112      cache-misses:u            #    2.178 % of all cache refs    
+
+       0.001591773 seconds time elapsed
+
+       0.000000000 seconds user
+       0.001644000 seconds sys
+
+
