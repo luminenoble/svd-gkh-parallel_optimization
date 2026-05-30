@@ -1,0 +1,120 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 12K of event 'cycles:u'
+# Event count (approx.): 117930199087
+#
+# Overhead  Command      Shared Object          Symbol                                                                                                                                                                                                                             
+# ........  ...........  .....................  ...................................................................................................................................................................................................................................
+#
+    53.33%  main_backup  main_backup            [.] (anonymous namespace)::apply_right_cols
+            |          
+             --53.32%--(anonymous namespace)::apply_right_cols
+                       |          
+                       |--36.80%--gkh_svd_from_bidiagonal
+                       |          |          
+                       |          |--21.86%--one_block_step (inlined)
+                       |          |          gkh_svd_from_bidiagonal
+                       |          |          run_case
+                       |          |          main
+                       |          |          0xffff9872afff
+                       |          |          __libc_start_main
+                       |          |          _start
+                       |          |          
+                       |           --14.94%--gkh_svd_from_bidiagonal
+                       |                     run_case
+                       |                     main
+                       |                     0xffff9872afff
+                       |                     __libc_start_main
+                       |                     _start
+                       |          
+                        --16.52%--one_block_step (inlined)
+                                  gkh_svd_from_bidiagonal
+                                  run_case
+                                  main
+                                  0xffff9872afff
+                                  __libc_start_main
+                                  _start
+
+    17.99%  main_backup  main_backup            [.] to_bidiagonal
+            |          
+             --17.95%--to_bidiagonal
+                       |          
+                        --17.94%--run_case
+                                  main
+                                  0xffff9872afff
+                                  __libc_start_main
+                                  _start
+
+    11.74%  main_backup  main_backup            [.] Matrix::operator*
+            |          
+             --11.68%--Matrix::operator*
+                       |          
+                       |--5.83%--orth_error
+                       |          run_case
+                       |          main
+                       |          0xffff9872afff
+                       |          __libc_start_main
+                       |          _start
+                       |          
+                       |--2.93%--run_case
+                       |          run_case
+                       |          main
+                       |          0xffff9872afff
+                       |          __libc_start_main
+                       |          _start
+                       |          
+                        --2.92%--reconstruction_error (inlined)
+                                  run_case
+                                  main
+                                  0xffff9872afff
+                                  __libc_start_main
+                                  _start
+
+    10.52%  main_backup  main_backup            [.] (anonymous namespace)::cleanup_bidiagonal
+            |          
+             --10.26%--(anonymous namespace)::cleanup_bidiagonal
+                       gkh_svd_from_bidiagonal
+                       run_case
+                       main
+                       0xffff9872afff
+                       __libc_start_main
+                       _start
+
+     5.72%  main_backup  main_backup            [.] (anonymous namespace)::apply_left_rows
+            |
+            ---(anonymous namespace)::apply_left_rows
+               one_block_step (inlined)
+               gkh_svd_from_bidiagonal
+               run_case
+               main
+               0xffff9872afff
+               __libc_start_main
+               _start
+
+     0.35%  main_backup  main_backup            [.] gkh_svd_from_bidiagonal
+     0.18%  main_backup  libm.so.6              [.] hypotf32x
+     0.04%  main_backup  libm.so.6              [.] __hypot_finite
+     0.03%  main_backup  main_backup            [.] fro_norm
+     0.02%  main_backup  main_backup            [.] run_case
+     0.02%  main_backup  main_backup            [.] transpose
+     0.02%  main_backup  libc.so.6              [.] 0x000000000009c188
+     0.01%  main_backup  libc.so.6              [.] 0x000000000008f990
+     0.01%  main_backup  libc.so.6              [.] 0x000000000009dd34
+     0.01%  main_backup  libc.so.6              [.] malloc
+     0.01%  main_backup  libc.so.6              [.] 0x000000000009008c
+     0.01%  main_backup  libc.so.6              [.] 0x000000000009c18c
+     0.01%  main_backup  main_backup            [.] hypot@plt
+     0.00%  main_backup  [unknown]              [k] 0xffffcb7c9deebf80
+     0.00%  main_backup  main_backup            [.] Matrix::random
+     0.00%  main_backup  main_backup            [.] std::mersenne_twister_engine<unsigned long, 64ul, 312ul, 156ul, 31ul, 13043109905998158313ul, 29ul, 6148914691236517205ul, 17ul, 8202884508482404352ul, 37ul, 18444473444759240704ul, 43ul, 6364136223846793005ul>::_M_gen_rand
+     0.00%  main_backup  ld-linux-aarch64.so.1  [.] 0x000000000000ae20
+     0.00%  main_backup  ld-linux-aarch64.so.1  [.] 0x000000000001cdc0
+     0.00%  main_backup  ld-linux-aarch64.so.1  [.] 0x000000000000b300
+
+
+#
+# (Tip: Search options using a keyword: perf report -h <keyword>)
+#

@@ -1,0 +1,70 @@
+=== 固定值 5x5 ===
+  converged                 : yes
+  ||A-U*S*V^T||_F           : 3.87158e-12
+  relative recon error      : 2.76731e-13
+  ||U^T U-I||_F             : 1.20168e-15
+  ||V^T V-I||_F             : 1.53579e-15
+  diagonal structure error  : 0
+  descending order error    : 0
+  nonnegative diagonal      : yes
+  time bidiagonalization(ms): 0.01009
+  time gkh iteration(ms)    : 0.02811
+  结果: PASS
+
+=== 随机 8x8 ===
+  converged                 : yes
+  ||A-U*S*V^T||_F           : 8.35447e-12
+  relative recon error      : 6.00094e-13
+  ||U^T U-I||_F             : 1.94952e-15
+  ||V^T V-I||_F             : 1.708e-15
+  diagonal structure error  : 0
+  descending order error    : 0
+  nonnegative diagonal      : yes
+  time bidiagonalization(ms): 0.01048
+  time gkh iteration(ms)    : 0.02125
+  结果: PASS
+
+=== 近秩亏损 10x8 ===
+  converged                 : yes
+  ||A-U*S*V^T||_F           : 1.09261e-14
+  relative recon error      : 8.61184e-16
+  ||U^T U-I||_F             : 2.20817e-15
+  ||V^T V-I||_F             : 1.66024e-15
+  diagonal structure error  : 0
+  descending order error    : 0
+  nonnegative diagonal      : yes
+  time bidiagonalization(ms): 0.011
+  time gkh iteration(ms)    : 0.02995
+  结果: PASS
+
+=== 随机 10x8 ===
+  converged                 : yes
+  ||A-U*S*V^T||_F           : 1.9461e-11
+  relative recon error      : 8.58635e-13
+  ||U^T U-I||_F             : 1.79471e-15
+  ||V^T V-I||_F             : 2.71846e-15
+  diagonal structure error  : 0
+  descending order error    : 0
+  nonnegative diagonal      : yes
+  time bidiagonalization(ms): 0.0083
+  time gkh iteration(ms)    : 0.02449
+  结果: PASS
+
+=== 随机 1000x1000 ===
+  converged                 : yes
+  ||A-U*S*V^T||_F           : 1.92864e-10
+  relative recon error      : 3.33415e-13
+  ||U^T U-I||_F             : 2.32362e-13
+  ||V^T V-I||_F             : 2.34244e-13
+  diagonal structure error  : 0
+  descending order error    : 0
+  nonnegative diagonal      : yes
+  time bidiagonalization(ms): 4599.63
+  time gkh iteration(ms)    : 13485
+  结果: PASS
+
+==============================
+随机种子基值: 20260714
+总上二对角化耗时(ms): 4599.67
+总GKH迭代耗时(ms): 13485.1
+通过: 5 / 5

@@ -1,0 +1,259 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 11K of event 'cycles:u'
+# Event count (approx.): 96571658501
+#
+# Overhead  Command       Shared Object          Symbol                                                                                                                                                                                                                             
+# ........  ............  .....................  ...................................................................................................................................................................................................................................
+#
+    56.90%  main_pthread  main_pthread           [.] (anonymous namespace)::apply_right_cols_rows
+            |          
+            |--38.14%--(anonymous namespace)::apply_right_cols_rows
+            |          |          
+            |          |--28.16%--(anonymous namespace)::thread_pool_worker
+            |          |          (anonymous namespace)::thread_pool_worker
+            |          |          0xffffbe102517
+            |          |          0xffffbe169d5b
+            |          |          
+            |           --9.99%--(anonymous namespace)::one_block_step_impl
+            |                     (anonymous namespace)::thread_pool_worker
+            |                     one_block_step_record_uv (inlined)
+            |                     one_block_step_record_uv_multibubble (inlined)
+            |                     (anonymous namespace)::thread_pool_worker
+            |                     0xffffbe102517
+            |                     0xffffbe169d5b
+            |          
+            |--9.14%--vmulq_f64 (inlined)
+            |          (anonymous namespace)::apply_right_cols_rows
+            |          |          
+            |          |--7.36%--(anonymous namespace)::thread_pool_worker
+            |          |          (anonymous namespace)::thread_pool_worker
+            |          |          0xffffbe102517
+            |          |          0xffffbe169d5b
+            |          |          
+            |           --1.79%--(anonymous namespace)::one_block_step_impl
+            |                     (anonymous namespace)::thread_pool_worker
+            |                     one_block_step_record_uv (inlined)
+            |                     one_block_step_record_uv_multibubble (inlined)
+            |                     (anonymous namespace)::thread_pool_worker
+            |                     0xffffbe102517
+            |                     0xffffbe169d5b
+            |          
+            |--5.24%--vst1q_f64 (inlined)
+            |          (anonymous namespace)::apply_right_cols_rows
+            |          |          
+            |          |--3.70%--(anonymous namespace)::thread_pool_worker
+            |          |          (anonymous namespace)::thread_pool_worker
+            |          |          0xffffbe102517
+            |          |          0xffffbe169d5b
+            |          |          
+            |           --1.55%--(anonymous namespace)::one_block_step_impl
+            |                     (anonymous namespace)::thread_pool_worker
+            |                     one_block_step_record_uv (inlined)
+            |                     one_block_step_record_uv_multibubble (inlined)
+            |                     (anonymous namespace)::thread_pool_worker
+            |                     0xffffbe102517
+            |                     0xffffbe169d5b
+            |          
+            |--3.50%--vld1q_f64 (inlined)
+            |          (anonymous namespace)::apply_right_cols_rows
+            |          |          
+            |           --3.13%--(anonymous namespace)::thread_pool_worker
+            |                     (anonymous namespace)::thread_pool_worker
+            |                     0xffffbe102517
+            |                     0xffffbe169d5b
+            |          
+             --0.57%--std::vector<double, std::allocator<double> >::operator[] (inlined)
+                       Matrix::at (inlined)
+                       (anonymous namespace)::apply_right_cols_rows
+                       |          
+                        --0.51%--(anonymous namespace)::thread_pool_worker
+                                  (anonymous namespace)::thread_pool_worker
+                                  0xffffbe102517
+                                  0xffffbe169d5b
+
+    15.13%  main_pthread  main_pthread           [.] Matrix::operator*
+            |          
+             --15.05%--Matrix::operator*
+                       |          
+                       |--7.44%--orth_error
+                       |          run_case
+                       |          main
+                       |          0xffffbe0aafff
+                       |          __libc_start_main
+                       |          _start
+                       |          
+                       |--3.99%--reconstruction_error (inlined)
+                       |          run_case
+                       |          main
+                       |          0xffffbe0aafff
+                       |          __libc_start_main
+                       |          _start
+                       |          
+                        --3.62%--run_case
+                                  run_case
+                                  main
+                                  0xffffbe0aafff
+                                  __libc_start_main
+                                  _start
+
+    12.03%  main_pthread  main_pthread           [.] (anonymous namespace)::cleanup_bidiagonal
+            |          
+             --11.73%--(anonymous namespace)::cleanup_bidiagonal
+                       gkh_svd_from_bidiagonal_pthread
+                       run_case
+                       main
+                       0xffffbe0aafff
+                       __libc_start_main
+                       _start
+
+    11.28%  main_pthread  main_pthread           [.] to_bidiagonal
+            |          
+            |--5.52%--vld1q_f64 (inlined)
+            |          |          
+            |          |--3.82%--dot_product_simd (inlined)
+            |          |          to_bidiagonal
+            |          |          run_case
+            |          |          main
+            |          |          0xffffbe0aafff
+            |          |          __libc_start_main
+            |          |          _start
+            |          |          
+            |           --1.69%--subtract_scaled_vector_simd (inlined)
+            |                     to_bidiagonal
+            |                     run_case
+            |                     main
+            |                     0xffffbe0aafff
+            |                     __libc_start_main
+            |                     _start
+            |          
+            |--2.65%--vst1q_f64 (inlined)
+            |          subtract_scaled_vector_simd (inlined)
+            |          to_bidiagonal
+            |          run_case
+            |          main
+            |          0xffffbe0aafff
+            |          __libc_start_main
+            |          _start
+            |          
+            |--1.88%--to_bidiagonal
+            |          |          
+            |           --1.41%--run_case
+            |                     main
+            |                     0xffffbe0aafff
+            |                     __libc_start_main
+            |                     _start
+            |          
+             --0.57%--dot_product_simd (inlined)
+                       to_bidiagonal
+                       run_case
+                       main
+                       0xffffbe0aafff
+                       __libc_start_main
+                       _start
+
+     3.61%  main_pthread  main_pthread           [.] (anonymous namespace)::apply_left_rows_cols
+            |          
+            |--1.67%--vld1q_f64 (inlined)
+            |          apply_left_rows_cols (inlined)
+            |          (anonymous namespace)::one_block_step_impl
+            |          (anonymous namespace)::thread_pool_worker
+            |          one_block_step_record_uv (inlined)
+            |          one_block_step_record_uv_multibubble (inlined)
+            |          (anonymous namespace)::thread_pool_worker
+            |          0xffffbe102517
+            |          0xffffbe169d5b
+            |          
+             --1.49%--vst1q_f64 (inlined)
+                       apply_left_rows_cols (inlined)
+                       (anonymous namespace)::one_block_step_impl
+                       (anonymous namespace)::thread_pool_worker
+                       one_block_step_record_uv (inlined)
+                       one_block_step_record_uv_multibubble (inlined)
+                       (anonymous namespace)::thread_pool_worker
+                       0xffffbe102517
+                       0xffffbe169d5b
+
+     0.20%  main_pthread  main_pthread           [.] (anonymous namespace)::thread_pool_worker
+     0.11%  main_pthread  main_pthread           [.] (anonymous namespace)::make_nonnegative_and_sort
+     0.09%  main_pthread  main_pthread           [.] (anonymous namespace)::one_block_step_impl
+     0.06%  main_pthread  libm.so.6              [.] hypotf32x
+     0.06%  main_pthread  libm.so.6              [.] __hypot_finite
+     0.05%  main_pthread  main_pthread           [.] (anonymous namespace)::handle_diagonal_zeros
+     0.04%  main_pthread  libc.so.6              [.] 0x000000000009c188
+     0.03%  main_pthread  libc.so.6              [.] 0x000000000007e948
+     0.02%  main_pthread  libc.so.6              [.] malloc
+     0.02%  main_pthread  main_pthread           [.] fro_norm
+     0.02%  main_pthread  main_pthread           [.] run_case
+     0.02%  main_pthread  libc.so.6              [.] pthread_cond_wait
+     0.02%  main_pthread  main_pthread           [.] gkh_svd_from_bidiagonal_pthread
+     0.02%  main_pthread  libc.so.6              [.] 0x0000000000086c30
+     0.02%  main_pthread  libc.so.6              [.] _pthread_cleanup_push
+     0.02%  main_pthread  libc.so.6              [.] 0x000000000009c18c
+     0.02%  main_pthread  libc.so.6              [.] 0x000000000007ed24
+     0.02%  main_pthread  main_pthread           [.] (anonymous namespace)::split_active_blocks
+     0.02%  main_pthread  libc.so.6              [.] 0x000000000009c17c
+     0.01%  main_pthread  main_pthread           [.] hypot@plt
+     0.01%  main_pthread  libc.so.6              [.] 0x000000000007ecf8
+     0.01%  main_pthread  libstdc++.so.6.0.28    [.] std::chrono::_V2::system_clock::now
+     0.01%  main_pthread  libc.so.6              [.] 0x0000000000091670
+     0.01%  main_pthread  libc.so.6              [.] 0x000000000009dd54
+     0.01%  main_pthread  libc.so.6              [.] 0x000000000009dd38
+     0.01%  main_pthread  libc.so.6              [.] pthread_cond_signal
+     0.01%  main_pthread  main_pthread           [.] transpose
+     0.01%  main_pthread  libc.so.6              [.] 0x00000000000813a0
+     0.01%  main_pthread  main_pthread           [.] std::vector<double, std::allocator<double> >::vector
+     0.01%  main_pthread  libc.so.6              [.] 0x000000000009c170
+     0.01%  main_pthread  libc.so.6              [.] 0x000000000007ec50
+     0.01%  main_pthread  libc.so.6              [.] 0x000000000008473c
+     0.01%  main_pthread  libc.so.6              [.] pthread_mutex_lock
+     0.01%  main_pthread  libc.so.6              [.] 0x0000000000086c24
+     0.01%  main_pthread  libc.so.6              [.] pthread_cond_broadcast
+     0.01%  main_pthread  libc.so.6              [.] 0x000000000009dc80
+     0.01%  main_pthread  libc.so.6              [.] 0x00000000000813a8
+     0.01%  main_pthread  libc.so.6              [.] clock_gettime
+     0.01%  main_pthread  main_pthread           [.] std::deque<(anonymous namespace)::Task, std::allocator<(anonymous namespace)::Task> >::emplace_back<(anonymous namespace)::Task>
+     0.01%  main_pthread  [unknown]              [k] 0xffffcb7c9d110424
+     0.01%  main_pthread  libc.so.6              [.] 0x000000000007ed44
+     0.01%  main_pthread  libc.so.6              [.] 0x000000000008fb94
+     0.01%  main_pthread  libc.so.6              [.] 0x0000000000084744
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000009c158
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007e960
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007ed4c
+     0.00%  main_pthread  libc.so.6              [.] cfree
+     0.00%  main_pthread  libc.so.6              [.] 0x0000000000086c20
+     0.00%  main_pthread  libc.so.6              [.] _pthread_cleanup_pop
+     0.00%  main_pthread  libstdc++.so.6.0.28    [.] operator new
+     0.00%  main_pthread  main_pthread           [.] pthread_mutex_unlock@plt
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007ed50
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000009dd58
+     0.00%  main_pthread  libc.so.6              [.] 0x00000000000846f0
+     0.00%  main_pthread  main_pthread           [.] pthread_cond_wait@plt
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007ef38
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007e940
+     0.00%  main_pthread  libc.so.6              [.] __clone
+     0.00%  main_pthread  libc.so.6              [.] 0x0000000000081390
+     0.00%  main_pthread  libc.so.6              [.] 0x0000000000082234
+     0.00%  main_pthread  libc.so.6              [.] 0x0000000000086c08
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007e930
+     0.00%  main_pthread  main_pthread           [.] std::mersenne_twister_engine<unsigned long, 64ul, 312ul, 156ul, 31ul, 13043109905998158313ul, 29ul, 6148914691236517205ul, 17ul, 8202884508482404352ul, 37ul, 18444473444759240704ul, 43ul, 6364136223846793005ul>::_M_gen_rand
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000009c180
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007e938
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007e954
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000009dd68
+     0.00%  env           ld-linux-aarch64.so.1  [.] 0x0000000000010170
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007e93c
+     0.00%  env           ld-linux-aarch64.so.1  [.] 0x000000000001cdc0
+     0.00%  main_pthread  ld-linux-aarch64.so.1  [.] 0x000000000001cdc0
+     0.00%  main_pthread  libc.so.6              [.] 0x000000000007ef0c
+     0.00%  env           ld-linux-aarch64.so.1  [.] 0x0000000000010488
+     0.00%  main_pthread  libc.so.6              [.] 0x0000000000082240
+     0.00%  main_pthread  [unknown]              [k] 0xffffcb7c9deebf80
+
+
+#
+# (Tip: Sample related events with: perf record -e '{cycles,instructions}:S')
+#

@@ -1,2 +1,16 @@
-# started on Sat May 30 16:21:13 2026
+# started on Sat May 30 16:40:44 2026
+
+
+ Performance counter stats for '/home/s2412737/svd/files/bin/main_backup 20260307':
+
+   147,882,644,114      cycles:u                                                    
+   119,117,834,141      instructions:u            #    0.81  insn per cycle         
+    44,582,424,222      cache-references:u                                          
+     2,188,612,213      cache-misses:u            #    4.909 % of all cache refs    
+
+      58.147681620 seconds time elapsed
+
+      57.768285000 seconds user
+       0.097039000 seconds sys
+
 

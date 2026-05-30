@@ -1,0 +1,22 @@
+# Overhead  Command      Shared Object          Symbol                                                                                                                                                                                                                             
+# ........  ...........  .....................  ...................................................................................................................................................................................................................................
+#
+    53.33%  main_backup  main_backup            [.] (anonymous namespace)::apply_right_cols
+            |          
+             --53.32%--(anonymous namespace)::apply_right_cols
+                       |          
+                       |--36.80%--gkh_svd_from_bidiagonal
+                       |          |          
+                       |          |--21.86%--one_block_step (inlined)
+                       |          |          gkh_svd_from_bidiagonal
+                       |          |          run_case
+                       |          |          main
+                       |          |          0xffff9872afff
+                       |          |          __libc_start_main
+                       |          |          _start
+                       |          |          
+                       |           --14.94%--gkh_svd_from_bidiagonal
+                       |                     run_case
+                       |                     main
+                       |                     0xffff9872afff
+                       |                     __libc_start_main

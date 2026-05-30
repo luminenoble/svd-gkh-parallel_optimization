@@ -1,0 +1,22 @@
+# Overhead  Command       Shared Object          Symbol                                                                                                                                                                                                                             
+# ........  ............  .....................  ...................................................................................................................................................................................................................................
+#
+    56.90%  main_pthread  main_pthread           [.] (anonymous namespace)::apply_right_cols_rows
+            |          
+            |--38.14%--(anonymous namespace)::apply_right_cols_rows
+            |          |          
+            |          |--28.16%--(anonymous namespace)::thread_pool_worker
+            |          |          (anonymous namespace)::thread_pool_worker
+            |          |          0xffffbe102517
+            |          |          0xffffbe169d5b
+            |          |          
+            |           --9.99%--(anonymous namespace)::one_block_step_impl
+            |                     (anonymous namespace)::thread_pool_worker
+            |                     one_block_step_record_uv (inlined)
+            |                     one_block_step_record_uv_multibubble (inlined)
+            |                     (anonymous namespace)::thread_pool_worker
+            |                     0xffffbe102517
+            |                     0xffffbe169d5b
+            |          
+            |--9.14%--vmulq_f64 (inlined)
+            |          (anonymous namespace)::apply_right_cols_rows
