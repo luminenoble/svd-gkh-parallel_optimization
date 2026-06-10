@@ -20,6 +20,12 @@ public:
     int rows() const { return rows_; }
     int cols() const { return cols_; }
 
+    // 底层连续缓冲区访问器（行主序，长度 rows_*cols_）。
+    // GPU 版需要把整块内存交给 cudaMemcpy / hipMemcpy；其余分支 matrix.h 相同，
+    // 新增只读/可写指针访问器不破坏跨分支兼容性。
+    double *data() { return data_.data(); }
+    const double *data() const { return data_.data(); }
+
     // 矩阵加法
     Matrix operator+(const Matrix &other) const
     {
